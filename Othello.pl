@@ -441,7 +441,7 @@ get_hash_key(Grid,[Head|Tail],I,J,N):-		% case 2 of internal routine: keep recur
 
 /****************************************************************************
 *__________________Game application & I\O interaction module________________*
-***************************************************************************/%.
+***************************************************************************/
 % main program to initiate entire application: run/0
 run:-
 	print_welcome_message,
@@ -472,7 +472,7 @@ run:-
 /*************************************************************************
 * Automatic game AI vs AI                                                 
 * play_automatic_game(+Level, +pos(Grid1,Computer1,_))                    
-*************************************************************************/%.
+*************************************************************************/
 play_automatic_game(Level,pos(Grid1,Computer1,_)):-
 	% incase current player has a legal move 
 	get_legal_coordinates(Grid1,Computer1,_),!,
@@ -497,12 +497,12 @@ play_automatic_game(Level,pos(Grid1,Computer1,_)):-
 
 /*************************************************************************
 * Interactive game Human vs AI                                            
-*************************************************************************/%.
+*************************************************************************/
 play_interactive_game(Mode,Level,pos(GridId,Player1,_)):-	
 	% assure current player has a legal move  
 	(get_legal_coordinates(GridId,Player1,ValidCoordinates),
 	 retractall(player_stuck(_)),
-	 
+
 	((%user to move 
 	 Mode =:= Player1,!,	
 	 get_coordinate_from_user(Player1,ValidCoordinates,UserCoordinate),
@@ -517,10 +517,11 @@ play_interactive_game(Mode,Level,pos(GridId,Player1,_)):-
 	 (not(end_of_game(_)),not(user_exited_game),nl,
 	  write('current position after placing a piece on this slot -'),
 	  print_grid(NewId), sleep(1),
-	  ((Mode =:= Player1,!, print_a_compliment,!, sleep(1)) ; (sleep(0.75))),
-	  play_interactive_game(Mode,Level,pos(NewId,Player2,_))))  % continue to next round 
+	  ((Mode =:= Player1,!, print_a_compliment,!, sleep(1)) ; (sleep(0.75)),write(Level),write("is my Level")),
+	  play_interactive_game(Mode,newLevel,pos(NewId,Player2,_))  % continuer to nexte round
+		,Level is newLevel+1))
 	;
-	
+
 	% incase current player is stuck skip him or end game 
 	(assert(player_stuck(Player1)),
 		get_other_player(Player1,Player2),
@@ -558,7 +559,9 @@ get_max_depth(Level,MaxDepth):-
 /* user_exit(+X) - check if user requested to quit. if so, turn on appropriate flag */
 user_exit(X):-
 	(nonvar(X), (X = 'EXIT' ; X = exit), assert(user_exited_game)).
-	
+
+incr(X):-
+	X is X+1.	
 	
 /*************************************************************************
 * I\O Routines                                                           *
@@ -688,12 +691,12 @@ print_welcome_message:-
 	
 /* print_greeting_message(+PlayerName) */
 print_greeting_message(PlayerName):-
-	write('Hello '), write(PlayerName), write('!'),nl,sleep(1),
-	write('This application enables a few possible different game settings.'),nl,sleep(1),
-	write('Inorder to gain best game experience, '),nl,sleep(1),
-	write('select your preferences as instructed below.'),nl,sleep(1),
-	write('Please note: If by any stage you wish to quit, just type in ''EXIT'' or ''exit''.'),nl, sleep(1),
-	nl,write('Okay, first things first... '), nl, sleep(1).
+	write('Hello '), write(PlayerName), write('!'),nl,
+	write('This application enables a few possible different game settings.'),nl,
+	write('Inorder to gain best game experience, '),nl,
+	write('select your preferences as instructed below.'),nl,
+	write('Please note: If by any stage you wish to quit, just type in ''EXIT'' or ''exit''.'),nl,
+	nl,write('Okay, first things first... '), nl.
 
 
 /* print_starting_pos */ 
