@@ -346,21 +346,20 @@ staticval(pos(GridId,_,_),Val,Level):-
 	(Level =:= 2,!,
 	 pieces_count_evaluation(GridId,CountVal,_,_),
 	 mobility_evaluation(GridId,MobilityVal),
-	 Val is (0.4 * CountVal) + (0.6 * MobilityVal),
-	 write(" Val = "),write(Val))
+	 Val is (0.4 * CountVal) + (0.6 * MobilityVal))
 	;
 	% advanced level, count pieces & approximate mobility & check corners 
 	(Level =:= 3,!,
   	 pieces_count_evaluation(GridId,CountVal,_,_),
 	 mobility_evaluation(GridId,MobilityVal),
 	 corners_evaluation(GridId,CornersVal),
-	 Val is (0.25 * CountVal) + (0.35 * MobilityVal) + (0.4 * CornersVal));
-	% Level teste
+	 Val is (0.25 * CountVal) + (0.35 * MobilityVal) + (0.4 * CornersVal))
+	 ;
 	 (Level =:= 4,!,
-  	 pieces_count_evaluation(GridId,CountVal,_,_),
-	 mobility_evaluation(GridId,MobilityVal),
-	 corners_evaluation(GridId,CornersVal),
-	 Val is 0).
+  	 Val is 0)
+	 ;
+	 (Level =:= 5,!,
+	  c_x_evaluation(GridId,Val)).
 
 /* Heurstic evaluation function #1
    pieces_count_evaluation(+GridId,-Val,+MaxCount,+MinCount) 
@@ -423,6 +422,41 @@ corners_evaluation(GridId,Val):-
 	% sum result of all corners 
 	Val is C1Val+C2Val+C3Val+C4Val.	
 	
+c_x_evaluation(GridId,Val):-
+	%Get x and c values
+	dimension(N),
+	slot(GridId,coordinate(1,2),C1),
+	slot(GridId,coordinate(2,1),C2),
+	slot(GridId,coordinate(1,N-1),C3),
+	slot(GridId,coordinate(N-1,1),C4),
+	slot(GridId,coordinate(2,N),C5),
+	slot(GridId,coordinate(N,2),C6),
+	slot(GridId,coordinate(N,N-1),C7),
+	slot(GridId,coordinate(N-1,N),C8),
+
+	slot(GridId,coordinate(2,2),X1),
+	slot(GridId,coordinate(2,N-1),X2),
+	slot(GridId,coordinate(N-1,2),X3),
+	slot(GridId,coordinate(N-1,N-1),X4),
+
+	% assign each corner a grade 1/4 according to it's value (empty\max\min)
+	((C1 =:= 0,!,C1Val is 0) ; (C1 =:= 1,!,C1Val is 0.1) ; (C1Val is -0.1)),
+	((C2 =:= 0,!,C2Val is 0) ; (C2 =:= 1,!,C2Val is 0.1) ; (C2Val is -0.1)),
+	((C3 =:= 0,!,C3Val is 0) ; (C3 =:= 1,!,C3Val is 0.1) ; (C3Val is -0.1)),
+	((C4 =:= 0,!,C4Val is 0) ; (C4 =:= 1,!,C4Val is 0.1) ; (C4Val is -0.1)),
+	((C5 =:= 0,!,C5Val is 0) ; (C1 =:= 1,!,C5Val is 0.1) ; (C5Val is -0.1)),
+	((C6 =:= 0,!,C6Val is 0) ; (C2 =:= 1,!,C6Val is 0.1) ; (C6Val is -0.1)),
+	((C7 =:= 0,!,C7Val is 0) ; (C3 =:= 1,!,C7Val is 0.1) ; (C7Val is -0.1)),
+	((C8 =:= 0,!,C8Val is 0) ; (C4 =:= 1,!,C8Val is 0.1) ; (C8Val is -0.1)),
+
+	((X1 =:= 0,!,X1Val is 0) ; (X1 =:= 1,!,X1Val is 0.05) ; (X1Val is -0.05)),
+	((X2 =:= 0,!,X2Val is 0) ; (X2 =:= 1,!,X2Val is 0.05) ; (X2Val is -0.05)),
+	((X3 =:= 0,!,X3Val is 0) ; (X3 =:= 1,!,X3Val is 0.05) ; (X3Val is -0.05)),
+	((X4 =:= 0,!,X4Val is 0) ; (X4 =:= 1,!,X4Val is 0.05) ; (X4Val is -0.05)),
+
+	% sum result of all corners
+	Val is -C1Val-C2Val-C3Val-C4Val-C5Val-C6Val-C7Val-C8Val-X1Val-X2Val-X3Val-X4Val.
+
 /* get_hash_key(+Grid,-HashKey) 		                                 
    return a hash key for a given grid id to manage it's state in memory */
 get_hash_key(Grid,HashKey):-
@@ -450,14 +484,16 @@ run:-
 	get_board_dimension(N),
 	get_game_mode(Mode),	
 	get_game_level(Level),
+	get_game_level2(Level2),
 	initialize_board(N),
 	print_starting_pos,
-	
+	Count is 0,
+	Strategy is 0,
 	% play against computer 
-	((Mode =< 2, play_interactive_game(Mode,Level,pos(0,1,_))	
+	((Mode =< 2, play_interactive_game(Count,Mode,Level,pos(0,1,_))	
 	 ;
 	 % watch automatic game computer vs computer 
-	 Mode =:= 3, play_automatic_game(Level,pos(0,1,_)))
+	 Mode =:= 3, play_automatic_game(Strategy,Count,Level,Level2,pos(0,1,_)))
 	;
 	% user quit game explictly 
 	(user_exited_game,!, print_goodbye_message(PlayerName), cleanup)
@@ -471,57 +507,71 @@ run:-
 	
 /*************************************************************************
 * Automatic game AI vs AI                                                 
-* play_automatic_game(+Level, +pos(Grid1,Computer1,_))                    
+* play_automatic_game(+Strategy,+Count,+Level,+Level2, +pos(Grid1,Computer1,_))                    
 *************************************************************************/
-play_automatic_game(Level,pos(Grid1,Computer1,_)):-
+play_automatic_game(Strategy,Count,Level,Level2,pos(Grid1,Computer1,_)):-
 	% incase current player has a legal move 
 	get_legal_coordinates(Grid1,Computer1,_),!,
 	get_max_depth(Level,MaxDepth),
-	alphabeta(pos(Grid1,Computer1,_),_,_,Pos2,_,0,MaxDepth,Level), % get best move 
+	write(" \nLevel of Computer 1 (x) is :"),write(Level),write(" \nLevel of Computer 2 (o) is :"),write(Level2),
+	write(" \nStrategie du Computer 1 is :"),write(Strategy),
+	write(" \nCoup Numero :"),write(Count),NewCount is Count+1,
+	/*Strategie 1 : si numéro du coup mod 5 ==0 (on change d'heuristique après le 5ème coup))*/
+	 ((X is Count mod 5,X =:= 0,Count =\= 0,Strategy =:= 1 ,!,
+	 NewLevel is Level+1);
+	 (NewLevel is Level)),
+	/*alphabeta*/
+	alphabeta(pos(Grid1,Computer1,_),_,_,Pos2,_,0,MaxDepth,NewLevel), % get best move 
 	Pos2 = pos(Grid2,Computer2,coordinate(I2,J2)),
 	nl,write('Computer'),write(Computer1),write(' plays ('),
 	write(I2),write(','),write(J2),write(').'),
 	nl, write('Current game position after placing a piece on this slot -'),
-	print_grid(Grid2),sleep(1.5),
-	play_automatic_game(Level, pos(Grid2,Computer2,_))	% alternate turn
+	print_grid(Grid2),
+	play_automatic_game(Strategy,NewCount,NewLevel,Level2, pos(Grid2,Computer2,_))	% alternate turn
 	;
 	% incase current player has no legal move, alternate turn 
 	get_other_player(Computer1,Computer2),
 	get_legal_coordinates(Grid1,Computer2,_),!,
 	nl,write('Computer'),write(Computer1),write(' has no legal moves.'),
-	play_automatic_game(Level, pos(Grid1,Computer2,_))
+	play_automatic_game(Strategy,Count,Level,Level2, pos(Grid1,Computer2,_))
 	;
 	% both player have no legal move - end game 
 	assert(end_of_game(Grid1)),!,nl,write('End of Game'), fail.
 
 
 /*************************************************************************
-* Interactive game Human vs AI                                            
+* Interactive game Human vs AI (changement d'heuristique tous les 5 coups)                                            
 *************************************************************************/
-play_interactive_game(Mode,Level,pos(GridId,Player1,_)):-	
+play_interactive_game(Count,Mode,Level,pos(GridId,Player1,_)):-	
 	% assure current player has a legal move  
 	(get_legal_coordinates(GridId,Player1,ValidCoordinates),
 	 retractall(player_stuck(_)),
-
+	 write("Coup Numero :"),write(Count),NewCount is Count+1,
+	 /*si numero count  mod 5 ==0 on incremente le niveau*/
+	 ((X is Count mod 5,X =:= 0,Count =\= 0 ,!,
+	 NewLevel is Level+1);
+	 (NewLevel is Level)),
 	((%user to move 
-	 Mode =:= Player1,!,	
+	 Mode =:= Player1,!,
+	 write("NewLevel: "),write(NewLevel),	
 	 get_coordinate_from_user(Player1,ValidCoordinates,UserCoordinate),
 	 makeLegalMove(UserCoordinate,pos(GridId,Player1,_),pos(NewId,Player2,_)))
 	;		
 	(%computer to move
 	 get_max_depth(Level,MaxDepth),
-	 !,alphabeta(pos(GridId,Player1,_),_,_,pos(NewId,Player2,coordinate(I,J)),_,0,MaxDepth,Level),
+	 !,
+	 write("NewLevel: "),write(NewLevel),
+	 alphabeta(pos(GridId,Player1,_),_,_,pos(NewId,Player2,coordinate(I,J)),_,0,MaxDepth,Level),
 	 print_computer_move(I,J))),
 	
 	 % print updated position and shift controll to next player  
 	 (not(end_of_game(_)),not(user_exited_game),nl,
 	  write('current position after placing a piece on this slot -'),
 	  print_grid(NewId), sleep(1),
-	  ((Mode =:= Player1,!, print_a_compliment,!, sleep(1)) ; (sleep(0.75)),write(Level),write("is my Level")),
-	  play_interactive_game(Mode,newLevel,pos(NewId,Player2,_))  % continuer to nexte round
-		,Level is newLevel+1))
+	  ((Mode =:= Player1,!, print_a_compliment,!, sleep(1)) ; (sleep(0.75))),
+	  play_interactive_game(NewCount,Mode,NewLevel,pos(NewId,Player2,_))))  % continue to next round 
 	;
-
+	
 	% incase current player is stuck skip him or end game 
 	(assert(player_stuck(Player1)),
 		get_other_player(Player1,Player2),
@@ -533,7 +583,7 @@ play_interactive_game(Mode,Level,pos(GridId,Player1,_)):-
 		
 		% else, if other player has a move, shift the play to him  
 		(print_skip_turn_message(Mode,Player1),
-		 play_interactive_game(Mode,Level,pos(GridId,Player2,_))))).
+		 play_interactive_game(Count,Mode,Level,pos(GridId,Player2,_))))).
 
 
 /*************************************************************************
@@ -552,16 +602,15 @@ get_max_depth(Level,MaxDepth):-
 	;
 	(Level =:= 2,!, MaxDepth = 3)	% intemediate 
 	;
-	(Level =:= 3,!, MaxDepth = 5)	% advanced 
+	(Level =:= 3,!, MaxDepth = 5)% advanced 
 	;
-	(Level =:= 4,!, MaxDepth = 1)).	% Test 
+	(Level =:= 4,!, MaxDepth = 1)).	
+
 
 /* user_exit(+X) - check if user requested to quit. if so, turn on appropriate flag */
 user_exit(X):-
 	(nonvar(X), (X = 'EXIT' ; X = exit), assert(user_exited_game)).
-
-incr(X):-
-	X is X+1.	
+	
 	
 /*************************************************************************
 * I\O Routines                                                           *
@@ -617,13 +666,26 @@ get_board_dimension(N):-
 get_game_level(L):-
 	nl, write('Okay. Let''s set the game''s level - '),nl,
 	repeat, 
-	write('Please enter a number between 1 to 4 as follows: '),nl,
+	write('Please enter a number between 1 to 3 as follows: '),nl,
 	write('1 = Beginner'),nl,	
 	write('2 = Intermediate'),nl,
 	write('3 = Advanced'),nl, 
-	write('4 = Test'),nl,
 	get_user_input(L), 
-	((integer(L), L >= 1,L =< 4,!)	% validate input	
+	((integer(L), L >= 1,L =< 3,!)	% validate input	
+	 ;
+	 (user_exit(L),!, fail)			% user wishes to quit
+	 ;
+	 (print_invalid_input_message(L), fail)). % invalid input  
+	
+get_game_level2(L):-
+	nl, write('Okay. Let''s set the game''s level (if second AI) - '),nl,
+	repeat, 
+	write('Please enter a number between 1 to 3 as follows: '),nl,
+	write('1 = Beginner'),nl,	
+	write('2 = Intermediate'),nl,
+	write('3 = Advanced'),nl, 
+	get_user_input(L), 
+	((integer(L), L >= 1,L =< 3,!)	% validate input	
 	 ;
 	 (user_exit(L),!, fail)			% user wishes to quit
 	 ;
